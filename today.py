@@ -409,10 +409,11 @@ if __name__ == '__main__':
     acc_date = user_data[1]
     formatter('account data', user_time)
 
-    # 'Uptime' is measured from this date. Replace it with your birth date (Year, Month, Day)
-    # if you prefer the classic neofetch birthday counter.
-    birthday_date = datetime.datetime(2006, 6, 12)
-    age_data, age_time = perf_counter(daily_readme, birthday_date)
+    # 'Uptime' counts from this date. 2020-07-01 = start of vocational high school
+    # (Malaka VHS, Computer Network Engineering). Change it to your birth date if you
+    # prefer the classic neofetch birthday counter.
+    coding_since = datetime.datetime(2020, 7, 1)
+    age_data, age_time = perf_counter(daily_readme, coding_since)
     formatter('age calculation', age_time)
 
     total_loc, loc_time = perf_counter(loc_query, ['OWNER', 'COLLABORATOR', 'ORGANIZATION_MEMBER'], 7)
