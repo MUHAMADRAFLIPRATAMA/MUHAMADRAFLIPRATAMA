@@ -13,6 +13,7 @@ Jalankan: python stats_live.py
 import io
 import json
 import os
+from concurrent.futures import ThreadPoolExecutor
 import re
 import time
 import tarfile
@@ -129,13 +130,13 @@ def fetch_commits(repos):
 def repo_code_frequency(repo):
     """(additions, deletions) dari endpoint code_frequency; 202 = masih dihitung."""
     url = f"https://api.github.com/repos/{USER_NAME}/{repo}/stats/code_frequency"
-    for attempt in range(4):
+    for attempt in range(2):
         req = urllib.request.Request(url, headers=HEADERS)
         try:
             with urllib.request.urlopen(req, timeout=30) as r:
                 body = r.read().decode("utf-8", "ignore")
                 if r.status == 202 or not body.strip():
-                    time.sleep(2 + attempt * 2)
+                    time.sleep(1 + attempt)
                     continue
                 data = json.loads(body)
                 if not isinstance(data, list):
@@ -145,7 +146,7 @@ def repo_code_frequency(repo):
                 return add, dele
         except urllib.error.HTTPError as e:
             if e.code == 202:
-                time.sleep(2 + attempt * 2)
+                time.sleep(1 + attempt)
                 continue
             return 0, 0
         except Exception:
@@ -216,13 +217,12 @@ def gather(limit_loc=None):
                 additions += a
                 deletions += d
 
-    if tried and ok >= max(1, int(tried * 0.8)):
+    if tried and ok == tried:
         stats["loc_add"], stats["loc_del"] = additions, deletions
         stats["loc"] = additions - deletions
     elif targets:
-        lines = 0
-        for r in targets:
-            lines += tarball_lines(r["name"])
+        with ThreadPoolExecutor(max_workers=8) as pool:
+            lines = sum(pool.map(lambda r: tarball_lines(r["name"]), targets))
         if lines:
             stats["loc_add"], stats["loc_del"], stats["loc"] = lines, 0, lines
         else:
@@ -306,6 +306,32 @@ def patch_svg(path, stats):
     return False
 
 
+README_FILE = "README.md"
+
+
+def update_readme(path=README_FILE):
+    """Tambah/segarkan ?v=<waktu> pada URL SVG di README.
+
+    Gambar di README disajikan lewat proxy cache GitHub (camo) yang menyimpan
+    gambar lama. Dengan mengubah query-nya setiap kali stats diperbarui,
+    GitHub akan mengambil versi terbaru.
+    """
+    if not os.path.exists(path):
+        return False
+    src = open(path, encoding="utf-8").read()
+    stamp = time.strftime("%Y%m%d%H%M")
+    out = re.sub(
+        r"(https://raw\.githubusercontent\.com/[^\s\"'>]+\.svg)(\?v=\d+)?",
+        lambda m: m.group(1) + "?v=" + stamp,
+        src,
+    )
+    if out != src:
+        open(path, "w", encoding="utf-8", newline="").write(out)
+        print(f"OK {path} diperbarui (?v={stamp})")
+        return True
+    return False
+
+
 def main():
     limit = os.environ.get("LOC_REPO_LIMIT")
     stats = gather(limit_loc=int(limit) if limit else None)
@@ -313,6 +339,7 @@ def main():
     changed = False
     for f in SVG_FILES:
         changed = patch_svg(f, stats) or changed
+    changed = update_readme() or changed
     if not changed:
         print("tidak ada perubahan")
 
